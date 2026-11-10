@@ -141,12 +141,70 @@ def next_slot(rules: Rules, posted: list[dict], now: dt.datetime) -> dt.datetime
     return future[0] if future else None
 
 
-def pick_song(rules: Rules, posted: list[dict]) -> str:
-    tracks = list(rules.music.get("tracks") or []) if rules.music.get("enabled") else []
-    if not tracks:
-        return ""
-    recent = [p.get("music", "") for p in posted][-int(rules.music.get("avoid_last", 2)):]
-    return next((t for t in tracks if t not in recent), tracks[0])
+BLOCK = ("christmas", "xmas", "santa", "noel", "jingle", "snow", "winter", "lullaby", "holiday",
+         "navidad", "weihnacht", "vánoc", "december", "silent night")
+TREND_ARTISTS = ("jay-z", "beyoncé", "travis scott", "drake", "kanye", "ye", "future", "metro boomin",
+                 "kendrick", "eminem", "50 cent", "lil wayne", "21 savage", "playboi carti", "don toliver",
+                 "tame impala", "black eyed peas", "tate mcrae", "doja cat", "bad bunny", "karol g", "post malone",
+                 "the weeknd", "central cee", "lil baby", "gunna", "young thug", "a$ap", "tyga", "pitbull")
+_POOL: list[dict] = []
+
+
+def song_pool(ig: "IG", rules: Rules) -> list[dict]:
+    """Písničky, které jde k reelu připojit — v pořadí, v jakém se berou.
+
+    Hity bere Instagram přes API jen z aktuálních trendů (z 58 známých
+    rap/gym hitů nebyl v katalogu ani jeden, trendy ano). Proto: nejdřív
+    dnešní trendy bez vánočních apod., pak volné skladby Mety ve stylu
+    TOGI niche (phonk, gym, hype). Každý post dostane jinou (Simon 11. 11.).
+    """
+    if _POOL:
+        return _POOL
+    seen, out = set(), []
+    def add(a: dict, kind: str) -> None:
+        name = f"{a.get('title', '')} {a.get('display_artist', '')}".lower()
+        if a.get("audio_id") in seen or any(b in name for b in BLOCK):
+            return
+        seen.add(a["audio_id"])
+        out.append({"audio_id": str(a["audio_id"]), "title": a.get("title", ""),
+                    "artist": a.get("display_artist", ""), "kind": kind})
+    for t in rules.music.get("tracks") or []:                 # oblíbené z configu, když jsou v katalogu
+        try:
+            hit = ig.find_song(t)
+            if hit:
+                add(hit, "hit")
+        except Exception:
+            pass
+    for q in rules.music.get("searches") or ["phonk", "gym", "hype", "trap", "drift", "workout", "motivation"]:
+        try:
+            for a in ig.get("ig_audio", ig_user_id=ig.user, audio_type="music", search_query=q).get("audio") or []:
+                add(a, "niche")
+        except Exception:
+            pass
+    # Obecné trendy jen od interpretů z TOGI světa (rap, hype) — „What A
+    # Wonderful World“ k posilovně nesedí. Seznam jde rozšířit v rules.json.
+    artists = [x.lower() for x in rules.music.get("trend_artists") or TREND_ARTISTS]
+    try:
+        for a in ig.get("ig_audio", ig_user_id=ig.user, audio_type="music").get("audio") or []:
+            if not a.get("download_url") and any(x in (a.get("display_artist") or "").lower() for x in artists):
+                add(a, "trend")
+    except Exception as exc:
+        log(f"trendy hudby nejdou načíst: {str(exc)[:120]}")
+    _POOL.extend(out)
+    return _POOL
+
+
+def pick_song(ig: "IG", rules: Rules, posted: list[dict], skip: int = 0) -> dict | None:
+    """První písnička, která ještě nehrála (`skip` = kolik dalších přeskočit — pro plán)."""
+    if not rules.music.get("enabled"):
+        return None
+    pool = song_pool(ig, rules)
+    used = {p.get("audio_id") for p in posted if p.get("audio_id")} | \
+           {p.get("music", "").lower() for p in posted if p.get("music")}
+    fresh = [a for a in pool if a["audio_id"] not in used and a["title"].lower() not in used]
+    if len(fresh) > skip:
+        return fresh[skip]
+    return pool[skip % len(pool)] if pool else None
 
 
 # ── Instagram ────────────────────────────────────────────────
@@ -259,7 +317,8 @@ def airtable(method: str, table: str, records: list[dict]) -> list[dict]:
     return r.json().get("records", [])
 
 
-def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, days: int = 3) -> dict:
+def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, days: int = 3,
+         ig: "IG | None" = None) -> dict:
     """Stejný tvar, jaký čte KLAPKA (Autoclipping → Plán)."""
     local = now.astimezone(rules.tz)
     left = pool(queue, posted, rules)
@@ -278,11 +337,10 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
                 continue
             c = left.pop(0) if left else None
             song = ""
-            if c and rules.music.get("enabled"):
-                tracks = list(rules.music.get("tracks") or [])
-                recent = music_hist[-int(rules.music.get("avoid_last", 2)):]
-                song = next((t for t in tracks if t not in recent), tracks[0] if tracks else "")
-                music_hist.append(song)
+            if c and ig is not None:
+                nxt = pick_song(ig, rules, posted, skip=music_hist.count("__planned__"))
+                song = f"{nxt['title']} – {nxt['artist']}" if nxt else ""
+                music_hist.append("__planned__")
             rows.append({"at": iso(at), "status": "planned" if c else "empty", "clipId": c["id"] if c else "",
                          "title": c.get("header", "") if c else "", "score": int(c.get("score") or 0) if c else 0,
                          "music": song})
@@ -292,8 +350,9 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
             "pool": total, "leftAfter": len(left), "via": "github", "days": out}
 
 
-def push_plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, state: dict) -> None:
-    p = plan(rules, queue, posted, now)
+def push_plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, state: dict,
+              ig: "IG | None" = None) -> None:
+    p = plan(rules, queue, posted, now, ig=ig)
     fp = hashlib.sha1(json.dumps(p, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     if state.get("plan_fp") == fp:
         return
@@ -315,19 +374,18 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
         log("zásoba je prázdná — nic k postování")
         return None
     clip = items[0]
-    song = pick_song(rules, posted)
-    log(f"na řadě: {clip['id']} „{clip.get('header', '')}“ ({clip.get('score')}/100), hudba: {song or '—'}")
+    song = pick_song(ig, rules, posted)
+    log(f"na řadě: {clip['id']} „{clip.get('header', '')}“ ({clip.get('score')}/100), "
+        f"hudba: {(song or {}).get('title', '—')} – {(song or {}).get('artist', '')}")
     if dry:
         return None
     video = download(clip)
     audio, video_url, note = None, None, ""
     if song:
         try:
-            hit = ig.find_song(song)
-            if hit:
-                audio = {"audio_id": str(hit["audio_id"]), "audio_volume": int(rules.music.get("audio_volume", 22)),
-                         "video_volume": int(rules.music.get("video_volume", 100))}
-                video_url = host_on_klapka(video)
+            audio = {"audio_id": song["audio_id"], "audio_volume": int(rules.music.get("audio_volume", 22)),
+                     "video_volume": int(rules.music.get("video_volume", 100))}
+            video_url = host_on_klapka(video)
         except Exception as exc:
             note = f"bez hudby: {str(exc)[:160]}"
             audio, video_url = None, None
@@ -344,7 +402,8 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
         res = ig.publish(video, cap, None, None)
     entry = {"id": clip["id"], "at": iso(dt.datetime.now(dt.timezone.utc)), "url": res["url"],
              "media_id": res["media_id"], "title": clip.get("header", ""), "score": clip.get("score"),
-             "music": song if audio else "", "caption": cap, "note": note}
+             "music": song["title"] if audio else "", "artist": song.get("artist", "") if audio else "",
+             "audio_id": song["audio_id"] if audio else "", "caption": cap, "note": note}
     log(f"✅ venku: {res['url']}")
     if clip.get("klipy_rec"):
         airtable("PATCH", T_CLIPS, [{"id": clip["klipy_rec"], "fields": {
@@ -365,14 +424,14 @@ def main() -> int:
         git_pull()
         rules, queue, posted = Rules(load("rules.json", {})), load("queue.json", []), load("posted.json", [])
         now = dt.datetime.now(dt.timezone.utc)
-        push_plan(rules, queue, posted, now, state)
+        push_plan(rules, queue, posted, now, state, ig)
         why = due(rules, posted, ig.last_post(), now)
         if not why:
             entry = post_one(ig, rules, queue, posted, args.dry_run)
             if entry:
                 posted.append(entry)
                 save("posted.json", posted)
-                push_plan(rules, queue, posted, dt.datetime.now(dt.timezone.utc), state)
+                push_plan(rules, queue, posted, dt.datetime.now(dt.timezone.utc), state, ig)
                 save("state.json", state)
                 git_commit(f"reel: {entry['title'][:50]}")
                 continue
