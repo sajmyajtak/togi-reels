@@ -1,1 +1,34 @@
-{"on": false}
+{
+ "on": true,
+ "tz": "Europe/Prague",
+ "slots": [
+  "15:00",
+  "18:30",
+  "22:00"
+ ],
+ "min_gap_minutes": 120,
+ "min_ai_score": 55,
+ "music": {
+  "enabled": true,
+  "tracks": [
+   "Housewife",
+   "Pump It",
+   "Dracula",
+   "Work hard, dream big"
+  ],
+  "audio_volume": 22,
+  "video_volume": 100,
+  "avoid_last": 2
+ },
+ "attribution": "clips from kick.com/togi",
+ "banned_tags": [
+  "gambling",
+  "casino",
+  "slots",
+  "betting",
+  "stake"
+ ],
+ "account": "togis_lifestyle",
+ "account_rec": "recK1wXWpWb2BtDBr",
+ "plan_rec": "recdXIAwyYFkBpfNV"
+}
