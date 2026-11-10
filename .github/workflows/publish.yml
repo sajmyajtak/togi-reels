@@ -1,0 +1,63 @@
+name: Reels
+
+# Posílá TOGI reely na Instagram v časech z rules.json (15:00 / 18:30 / 22:00 Praha).
+# GitHub pouští naplánované běhy jen jednou za pár hodin, ať je cron jakýkoli.
+# Běh proto na časy čeká sám (nanejvýš 5,5 h); když další dnešní čas připadne
+# až za jeho konec, spustí další běh. Veřejný repozitář: minuty Actions zdarma.
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Jen zkouška (nic nepublikovat)"
+        type: boolean
+        default: false
+      wait:
+        description: "Kolik minut čekat na časy plánu"
+        type: string
+        default: "330"
+
+concurrency:
+  group: reels
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write   # spustit další běh řetězu
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Postovat podle plánu
+        id: post
+        env:
+          POSTER_GIT_COMMIT: "1"
+          PYTHONUNBUFFERED: "1"
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_USER_TOKEN: ${{ secrets.IG_USER_TOKEN }}
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          KLAPKA_MEDIA_KEY: ${{ secrets.KLAPKA_MEDIA_KEY }}
+          KLAPKA_BASE_ID: ${{ vars.KLAPKA_BASE_ID }}
+          KLAPKA_URL: ${{ vars.KLAPKA_URL }}
+        run: |
+          git config user.name "togi-reels"
+          git config user.email "togi-reels@users.noreply.github.com"
+          if [ -z "$IG_USER_ID" ]; then echo "Chybí secret IG_USER_ID — účet není připojený."; exit 0; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python poster.py --dry-run
+          else
+            python poster.py --wait "${{ inputs.wait || '330' }}"
+          fi
+      - name: Spustit další běh (další dnešní čas je až po konci tohoto)
+        if: ${{ steps.post.outputs.next != '' && inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml -R "${{ github.repository }}" --ref "${{ github.ref_name }}" -f wait=330
