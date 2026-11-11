@@ -18,7 +18,7 @@
    "comments": 0,
    "shares": 3,
    "saved": 0,
-   "at": "2026-11-11T11:48:37+00:00"
+   "at": "2026-11-11T17:51:02+00:00"
   }
  },
  {
@@ -40,7 +40,7 @@
    "comments": 0,
    "shares": 0,
    "saved": 1,
-   "at": "2026-11-11T11:48:37+00:00"
+   "at": "2026-11-11T17:51:02+00:00"
   }
  },
  {
@@ -56,13 +56,13 @@
   "klipy_rec": "recd1ggsQ9y91r8oB",
   "kategorie": "momentka",
   "metrics": {
-   "views": 205,
-   "reach": 143,
+   "views": 206,
+   "reach": 144,
    "likes": 6,
    "comments": 0,
    "shares": 0,
    "saved": 1,
-   "at": "2026-11-11T11:48:37+00:00"
+   "at": "2026-11-11T17:51:02+00:00"
   }
  },
  {
@@ -78,7 +78,16 @@
   "caption": "6.3 million in debt and completely unbothered 😭\n\nclips from kick.com/togi\n\n#togi #togiclips #money #debt",
   "note": "",
   "klipy_rec": "recyMuUAu9sL7uuSo",
-  "kategorie": "kombo"
+  "kategorie": "kombo",
+  "metrics": {
+   "views": 142,
+   "reach": 122,
+   "likes": 4,
+   "comments": 0,
+   "shares": 0,
+   "saved": 2,
+   "at": "2026-11-11T17:51:02+00:00"
+  }
  },
  {
   "id": "c_68d1453f62c0b6",
@@ -94,6 +103,15 @@
   "caption": "chatgpt said 47 and he blamed the questions 😭\n\nclips from kick.com/togi\n\n#togi #togiclips #iqtest #icedcoffeehour",
   "note": "",
   "klipy_rec": "rec4ycTTf2aPcGcq2",
-  "kategorie": "momentka"
+  "kategorie": "momentka",
+  "metrics": {
+   "views": 9,
+   "reach": 1,
+   "likes": 1,
+   "comments": 0,
+   "shares": 0,
+   "saved": 0,
+   "at": "2026-11-11T17:51:02+00:00"
+  }
  }
 ]
