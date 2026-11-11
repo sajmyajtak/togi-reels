@@ -156,7 +156,21 @@ TREND_ARTISTS = ("jay-z", "beyoncé", "travis scott", "drake", "kanye", "ye", "f
 _POOL: list[dict] = []
 
 
+_SONG_CACHE: dict = {}
+
+
 def song_pool(ig: "IG", rules: Rules) -> list[dict]:
+    """Katalog písniček se drží hodinu — poster se teď budí každých 20 min
+    a plán by jinak pokaždé znovu prohledával Instagram."""
+    hit = _SONG_CACHE.get("pool")
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    pool = _song_pool(ig, rules)
+    _SONG_CACHE["pool"] = (time.time(), pool)
+    return pool
+
+
+def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
     """Písničky, které jde k reelu připojit — v pořadí, v jakém se berou.
 
     Hity bere Instagram přes API jen z aktuálních trendů (z 58 známých
@@ -471,6 +485,9 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
     return entry
 
 
+NAP_S = 20 * 60
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--wait", type=int, default=0, help="kolik minut čekat na okna plánu")
@@ -515,7 +532,7 @@ def main() -> int:
             rest = deadline - time.time() - 90
             if rest > 60:
                 log(f"další čas {nxt.astimezone(rules.tz):%H:%M} je až po konci běhu — čekám {int(rest // 60)} min, pak navážu")
-                time.sleep(rest)
+                time.sleep(min(NAP_S, rest))      # po kouscích: mezitím obnovit frontu a plán v KLAPCE
                 continue
             log(f"další čas {nxt.astimezone(rules.tz):%H:%M} — navazuji dalším během")
             out = os.environ.get("GITHUB_OUTPUT")
@@ -524,7 +541,9 @@ def main() -> int:
                     fh.write(f"next={iso(nxt)}\n")
             break
         log(f"čekám na {nxt.astimezone(rules.tz):%H:%M} ({int(wait_s // 60)} min)")
-        time.sleep(max(30, wait_s))
+        # Nejdéle 20 min v kuse: Mac mezitím mění frontu (přestřižené klipy,
+        # komba) a plán v KLAPCE by jinak ukazoval smazané klipy jako „klip“.
+        time.sleep(min(NAP_S, max(30, wait_s)))
     save("state.json", state)
     git_commit("stav plánu")
     return 0
