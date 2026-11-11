@@ -114,8 +114,10 @@ class Rules:
 
 def pool(queue: list[dict], posted: list[dict], rules: Rules) -> list[dict]:
     done = {p["id"] for p in posted}
+    # Přestřih už zveřejněného momentu má nové ID, ale stejný nadpis — ven podruhé nesmí.
+    titles = {(p.get("title") or "").strip().lower() for p in posted} - {""}
     items = [c for c in queue if c["id"] not in done and int(c.get("score") or 0) >= rules.min_score
-             and c.get("ok", True)]
+             and c.get("ok", True) and (c.get("header") or "").strip().lower() not in titles]
     return sorted(items, key=lambda c: (int(c.get("score") or 0), c.get("created", "")), reverse=True)
 
 
