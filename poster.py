@@ -345,7 +345,9 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
                 continue
             c = left.pop(0) if left else None
             song = ""
-            if c and ig is not None:
+            if c and c.get("zvuk") == "puvodni":
+                song = f"{c.get('hudba', '')} (ve videu)"
+            elif c and ig is not None:
                 nxt = pick_song(ig, rules, posted, skip=music_hist.count("__planned__"))
                 song = f"{nxt['title']} – {nxt['artist']}" if nxt else ""
                 music_hist.append("__planned__")
@@ -425,9 +427,12 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
         log("zásoba je prázdná — nic k postování")
         return None
     clip = items[0]
-    song = pick_song(ig, rules, posted)
+    # Kombo/edit má písničku zapečenou ve videu („původní zvuk“) — druhou
+    # z knihovny Instagramu by hrála přes ni (Simon 11. 11.).
+    baked = clip.get("zvuk") == "puvodni"
+    song = None if baked else pick_song(ig, rules, posted)
     log(f"na řadě: {clip['id']} „{clip.get('header', '')}“ ({clip.get('score')}/100), "
-        f"hudba: {(song or {}).get('title', '—')} – {(song or {}).get('artist', '')}")
+        f"hudba: {clip.get('hudba') + ' (ve videu)' if baked else (song or {}).get('title', '—')} – {(song or {}).get('artist', '')}")
     if dry:
         return None
     video = download(clip)
@@ -453,7 +458,8 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
         res = ig.publish(video, cap, None, None)
     entry = {"id": clip["id"], "at": iso(dt.datetime.now(dt.timezone.utc)), "url": res["url"],
              "media_id": res["media_id"], "title": clip.get("header", ""), "score": clip.get("score"),
-             "music": song["title"] if audio else "", "artist": song.get("artist", "") if audio else "",
+             "music": (clip.get("hudba", "") if baked else (song["title"] if audio else "")),
+             "artist": song.get("artist", "") if audio else "", "baked_audio": baked,
              "audio_id": song["audio_id"] if audio else "", "caption": cap, "note": note,
              "klipy_rec": clip.get("klipy_rec", ""), "kategorie": clip.get("kategorie", "momentka")}
     log(f"✅ venku: {res['url']}")
