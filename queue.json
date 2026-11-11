@@ -143,24 +143,6 @@
   "ok": true
  },
  {
-  "id": "c_e19d78bda68cf1",
-  "asset": "c_e19d78bda68cf1.mp4",
-  "header": "togi's iq test results 😭",
-  "caption": "79 and still richer than all of us 💀",
-  "hashtags": [
-   "togi",
-   "togiclips",
-   "iqtest",
-   "podcast"
-  ],
-  "score": 58,
-  "duration_s": 16.3,
-  "created": "2026-11-11T00:18:14+00:00",
-  "klipy_rec": "recfsyDLC0jT1DMfr",
-  "kategorie": "momentka",
-  "ok": true
- },
- {
   "id": "c_89faeefd971bfd",
   "asset": "c_89faeefd971bfd.mp4",
   "header": "they gave togi a secret IQ test 💀",
@@ -175,6 +157,24 @@
   "duration_s": 24.4,
   "created": "2026-11-11T01:50:47+00:00",
   "klipy_rec": "recah8W4GYtlyMh5S",
+  "kategorie": "momentka",
+  "ok": true
+ },
+ {
+  "id": "c_e19d78bda68cf1",
+  "asset": "c_e19d78bda68cf1.mp4",
+  "header": "togi's iq test results 😭",
+  "caption": "79 and still richer than all of us 💀",
+  "hashtags": [
+   "togi",
+   "togiclips",
+   "iqtest",
+   "podcast"
+  ],
+  "score": 58,
+  "duration_s": 16.3,
+  "created": "2026-11-11T02:09:35+00:00",
+  "klipy_rec": "recfsyDLC0jT1DMfr",
   "kategorie": "momentka",
   "ok": true
  },
