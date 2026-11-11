@@ -40,6 +40,12 @@ T_CLIPS, T_SETTINGS = "tbltIcs134lco0QB7", "tblcYY4LXKPFEHeoc"
 F = {"stage": "fld3C6ZuxKzd4LFeE", "url": "fld5zhNU1qjBAG7y2", "published": "fldYnFT2LkXXEyPdH",
      "platform": "fldhSpE5DN1LH9zvq", "account": "fldFR4CaswZUbLKcs"}
 F_SET_KEY, F_SET_VAL, F_SET_AT = "fld0Qr7YclciePaxM", "fldPb8fy7pqsdBBs1", "fldzGa2AZJHyyakW8"
+T_ACCOUNTS = "tbl13UIOw9q07Od7H"
+F_METRIC = {"views": "fldHkXs7nmukhKe81", "likes": "fldFgDCEXB3HuAJF9",
+            "comments": "fldf4Sj8xKm8scHkc", "shares": "fldxdJ9PM6uLhZacj"}
+F_FOLLOWERS = "fldDCRPWlLqsKgFP6"
+F_CATEGORY = "fldMamMhz9aN8PFev"
+METRICS_EVERY_H = 6      # Airtable free: 1 000 volání/měsíc na celý workspace (sdílí ho i leady)
 
 
 def log(msg: str) -> None:
@@ -333,7 +339,9 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
             if i < len(done):
                 p = done[i]
                 rows.append({"at": iso(at), "status": "published", "clipId": p["id"], "title": p.get("title", ""),
-                             "url": p.get("url", ""), "postedAt": p["at"], "music": p.get("music", "")})
+                             "url": p.get("url", ""), "postedAt": p["at"], "music": p.get("music", ""),
+                             "kategorie": p.get("kategorie", "momentka"),
+                             "views": int((p.get("metrics") or {}).get("views") or 0)})
                 continue
             c = left.pop(0) if left else None
             song = ""
@@ -342,6 +350,7 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
                 song = f"{nxt['title']} – {nxt['artist']}" if nxt else ""
                 music_hist.append("__planned__")
             rows.append({"at": iso(at), "status": "planned" if c else "empty", "clipId": c["id"] if c else "",
+                         "kategorie": (c or {}).get("kategorie", "momentka") if c else "",
                          "title": c.get("header", "") if c else "", "score": int(c.get("score") or 0) if c else 0,
                          "music": song})
         out.append({"date": day.isoformat(), "perDay": len(rows), "slots": rows})
@@ -365,6 +374,48 @@ def push_plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datet
     if done:
         state.update(plan_fp=fp, plan_rec=done[0]["id"])
         log(f"plán v KLAPCE aktualizovaný (zásoba {p['pool']}, po plánu zbude {p['leftAfter']})")
+
+
+# ── statistiky ───────────────────────────────────────────────
+def refresh_metrics(ig: "IG", rules: Rules, posted: list[dict], now: dt.datetime, state: dict) -> bool:
+    """Čísla reelů z Instagramu → posted.json a KLAPKA (Views, Lajky, …).
+
+    Měří se tady, ne na Macu — Mac nemusí být zapnutý a reely postuje
+    GitHub. Jednou za METRICS_EVERY_H hodin; do KLAPKY jen to, co se
+    změnilo (po 10 řádcích na jedno volání Airtable).
+    """
+    last = state.get("metrics_at")
+    if last and (now - parse(last)).total_seconds() < METRICS_EVERY_H * 3600:
+        return False
+    changed = []
+    for e in posted:
+        if not e.get("media_id"):
+            continue
+        try:
+            d = ig.get(f"{e['media_id']}/insights", metric="views,reach,likes,comments,shares,saved")
+        except Exception as exc:
+            log(f"statistiky {e['id']} nejdou: {str(exc)[:100]}")
+            continue
+        m = {x["name"]: (x.get("values") or [{}])[0].get("value", 0) for x in d.get("data", [])}
+        old = {k: v for k, v in (e.get("metrics") or {}).items() if k != "at"}
+        if m != old:
+            changed.append(e)
+        e["metrics"] = {**m, "at": iso(now)}
+    recs = [{"id": e["klipy_rec"], "fields": {F_METRIC[k]: int(e["metrics"].get(k) or 0) for k in F_METRIC}}
+            for e in changed if e.get("klipy_rec")]
+    for i in range(0, len(recs), 10):
+        airtable("PATCH", T_CLIPS, recs[i:i + 10])
+    try:
+        fol = int(ig.get(ig.user, fields="followers_count").get("followers_count") or 0)
+        if rules.account_rec and fol != state.get("followers"):
+            airtable("PATCH", T_ACCOUNTS, [{"id": rules.account_rec, "fields": {F_FOLLOWERS: fol}}])
+            state["followers"] = fol
+    except Exception:
+        pass
+    state["metrics_at"] = iso(now)
+    total = sum(int((e.get("metrics") or {}).get("views") or 0) for e in posted)
+    log(f"statistiky: {len(posted)} reelů, celkem {total} zhlédnutí, změna u {len(changed)}")
+    return bool(changed)
 
 
 # ── hlavní smyčka ────────────────────────────────────────────
@@ -403,12 +454,14 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
     entry = {"id": clip["id"], "at": iso(dt.datetime.now(dt.timezone.utc)), "url": res["url"],
              "media_id": res["media_id"], "title": clip.get("header", ""), "score": clip.get("score"),
              "music": song["title"] if audio else "", "artist": song.get("artist", "") if audio else "",
-             "audio_id": song["audio_id"] if audio else "", "caption": cap, "note": note}
+             "audio_id": song["audio_id"] if audio else "", "caption": cap, "note": note,
+             "klipy_rec": clip.get("klipy_rec", ""), "kategorie": clip.get("kategorie", "momentka")}
     log(f"✅ venku: {res['url']}")
     if clip.get("klipy_rec"):
         airtable("PATCH", T_CLIPS, [{"id": clip["klipy_rec"], "fields": {
             F["stage"]: "published", F["url"]: res["url"], F["published"]: entry["at"],
-            F["platform"]: "instagram", **({F["account"]: rules.account_rec} if rules.account_rec else {})}}])
+            F["platform"]: "instagram", F_CATEGORY: clip.get("kategorie", "momentka"),
+            **({F["account"]: rules.account_rec} if rules.account_rec else {})}}])
     return entry
 
 
@@ -424,6 +477,10 @@ def main() -> int:
         git_pull()
         rules, queue, posted = Rules(load("rules.json", {})), load("queue.json", []), load("posted.json", [])
         now = dt.datetime.now(dt.timezone.utc)
+        if refresh_metrics(ig, rules, posted, now, state):
+            save("posted.json", posted)
+            save("state.json", state)
+            git_commit("statistiky reelů")
         push_plan(rules, queue, posted, now, state, ig)
         why = due(rules, posted, ig.last_post(), now)
         if not why:
