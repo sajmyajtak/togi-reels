@@ -503,9 +503,17 @@ def main() -> int:
             break
         wait_s = (nxt - dt.datetime.now(dt.timezone.utc)).total_seconds() + 20
         if time.time() + wait_s > deadline:
-            log(f"další čas {nxt.astimezone(rules.tz):%H:%M} je až po konci běhu — navážu dalším během")
+            # Nejdřív vyčerpat vlastní čas běhu, teprve pak navázat dalším.
+            # Dřív se navazovalo hned → v noci (další čas až odpoledne) se
+            # běhy řetězily naprázdno jeden za druhým (11. 11. ~00:50).
+            rest = deadline - time.time() - 90
+            if rest > 60:
+                log(f"další čas {nxt.astimezone(rules.tz):%H:%M} je až po konci běhu — čekám {int(rest // 60)} min, pak navážu")
+                time.sleep(rest)
+                continue
+            log(f"další čas {nxt.astimezone(rules.tz):%H:%M} — navazuji dalším během")
             out = os.environ.get("GITHUB_OUTPUT")
-            if out:
+            if out and args.wait > 0:
                 with open(out, "a") as fh:
                     fh.write(f"next={iso(nxt)}\n")
             break
