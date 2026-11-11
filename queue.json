@@ -68,19 +68,20 @@
   "ok": true
  },
  {
-  "id": "c_7acb9874dbbf82",
-  "asset": "c_7acb9874dbbf82.mp4",
-  "header": "bro spent $400 on a yo-yo 😭",
-  "caption": "priorities 💀",
+  "id": "c_e19d78bda68cf1",
+  "asset": "c_e19d78bda68cf1.mp4",
+  "header": "togi's iq test results 😭",
+  "caption": "79 and still richer than all of us 💀",
   "hashtags": [
    "togi",
-   "funny",
-   "gym"
+   "togiclips",
+   "iqtest",
+   "podcast"
   ],
   "score": 58,
-  "duration_s": 24.2,
-  "created": "2026-11-10T12:56:36+00:00",
-  "klipy_rec": "recAgRvPFV8Eny4Pm",
+  "duration_s": 16.3,
+  "created": "2026-11-11T00:18:14+00:00",
+  "klipy_rec": "",
   "ok": true
  },
  {
@@ -101,20 +102,19 @@
   "ok": true
  },
  {
-  "id": "c_73924033335370",
-  "asset": "c_73924033335370.mp4",
-  "header": "togi's iq test results 😭",
-  "caption": "79 and still richer than all of us 💀",
+  "id": "c_7acb9874dbbf82",
+  "asset": "c_7acb9874dbbf82.mp4",
+  "header": "bro spent $400 on a yo-yo 😭",
+  "caption": "priorities 💀",
   "hashtags": [
    "togi",
-   "togiclips",
-   "iqtest",
-   "podcast"
+   "funny",
+   "gym"
   ],
   "score": 58,
-  "duration_s": 21.1,
-  "created": "2026-11-10T21:29:32+00:00",
-  "klipy_rec": "recvw6LedR9FFdUac",
+  "duration_s": 24.2,
+  "created": "2026-11-10T12:56:36+00:00",
+  "klipy_rec": "recAgRvPFV8Eny4Pm",
   "ok": true
  },
  {
@@ -135,23 +135,6 @@
   "ok": true
  },
  {
-  "id": "c_b1df349ff8607a",
-  "asset": "c_b1df349ff8607a.mp4",
-  "header": "IQ 79 but made $10M 😭",
-  "caption": "doctors said 79 and he still won 💀",
-  "hashtags": [
-   "togi",
-   "iq",
-   "money",
-   "funny"
-  ],
-  "score": 56,
-  "duration_s": 12.3,
-  "created": "2026-11-10T14:46:22+00:00",
-  "klipy_rec": "recgfpTNmlVMc1L4h",
-  "ok": true
- },
- {
   "id": "c_b70609726f038b",
   "asset": "c_b70609726f038b.mp4",
   "header": "Togi's biggest flex of his life 😭",
@@ -166,6 +149,23 @@
   "duration_s": 30.8,
   "created": "2026-11-10T15:08:35+00:00",
   "klipy_rec": "recLdUHBXsv5qtHRK",
+  "ok": true
+ },
+ {
+  "id": "c_b1df349ff8607a",
+  "asset": "c_b1df349ff8607a.mp4",
+  "header": "IQ 79 but made $10M 😭",
+  "caption": "doctors said 79 and he still won 💀",
+  "hashtags": [
+   "togi",
+   "iq",
+   "money",
+   "funny"
+  ],
+  "score": 56,
+  "duration_s": 12.3,
+  "created": "2026-11-10T14:46:22+00:00",
+  "klipy_rec": "recgfpTNmlVMc1L4h",
   "ok": true
  }
 ]
