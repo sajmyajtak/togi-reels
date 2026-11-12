@@ -149,7 +149,8 @@ def next_slot(rules: Rules, posted: list[dict], now: dt.datetime) -> dt.datetime
     return future[0] if future else None
 
 
-BLOCK = ("phonk", "christmas", "xmas", "santa", "noel", "jingle", "snow", "winter", "lullaby", "holiday",
+BLOCK = ("phonk", "orchestra", "philharmonic", "sibelius", "etude", "suicid", "lullaby", "meditation",
+         "sleep", "christmas", "xmas", "santa", "noel", "jingle", "snow", "winter", "lullaby", "holiday",
          "navidad", "weihnacht", "vánoc", "december", "silent night")
 TREND_ARTISTS = ("jay-z", "beyoncé", "travis scott", "drake", "kanye", "ye", "future", "metro boomin",
                  "kendrick", "eminem", "50 cent", "lil wayne", "21 savage", "playboi carti", "don toliver",
@@ -175,10 +176,12 @@ def song_pool(ig: "IG", rules: Rules) -> list[dict]:
 def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
     """Písničky, které jde k reelu připojit — v pořadí, v jakém se berou.
 
-    Hity bere Instagram přes API jen z aktuálních trendů (z 58 známých
-    rap/gym hitů nebyl v katalogu ani jeden, trendy ano). Proto: nejdřív
-    dnešní trendy bez vánočních apod., pak volné skladby Mety ve stylu
-    TOGI niche (gym, hype, hardstyle — bez phonku). Každý post dostane jinou (Simon 11. 11.).
+    Simon 12. 11.: k momentce „populární hudbu z Instagramu“. Pořadí:
+    1) oblíbené z configu (tracks), 2) dnešní TRENDY Instagramu (bez
+    vánočních, klasiky, phonku…), 3) až nakonec volné skladby Mety
+    podle hledání — ty jsou neznámé, jen záchrana. Dřív šly trendy jen od
+    rapperů ze seznamu a když žádný netrendoval, plán vybíral instrumentálky
+    jako „Ethiopia – Jayme Stone“. Každý post dostane jinou (Simon 11. 11.).
     """
     if _POOL:
         return _POOL
@@ -197,21 +200,21 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
                 add(hit, "hit")
         except Exception:
             pass
-    for q in rules.music.get("searches") or ["phonk", "gym", "hype", "trap", "drift", "workout", "motivation"]:
+    try:                                                       # trendy = populární hudba z IG
+        trends = ig.get("ig_audio", ig_user_id=ig.user, audio_type="music").get("audio") or []
+        artists = [x.lower() for x in rules.music.get("trend_artists") or TREND_ARTISTS]
+        fav = [a for a in trends if any(x in (a.get("display_artist") or "").lower() for x in artists)]
+        for a in fav + trends:                                 # oblíbení interpreti napřed
+            if not a.get("download_url"):
+                add(a, "trend")
+    except Exception as exc:
+        log(f"trendy hudby nejdou načíst: {str(exc)[:120]}")
+    for q in rules.music.get("searches") or ["hardstyle", "hype", "gym", "trap", "workout"]:
         try:
             for a in ig.get("ig_audio", ig_user_id=ig.user, audio_type="music", search_query=q).get("audio") or []:
                 add(a, "niche")
         except Exception:
             pass
-    # Obecné trendy jen od interpretů z TOGI světa (rap, hype) — „What A
-    # Wonderful World“ k posilovně nesedí. Seznam jde rozšířit v rules.json.
-    artists = [x.lower() for x in rules.music.get("trend_artists") or TREND_ARTISTS]
-    try:
-        for a in ig.get("ig_audio", ig_user_id=ig.user, audio_type="music").get("audio") or []:
-            if not a.get("download_url") and any(x in (a.get("display_artist") or "").lower() for x in artists):
-                add(a, "trend")
-    except Exception as exc:
-        log(f"trendy hudby nejdou načíst: {str(exc)[:120]}")
     _POOL.extend(out)
     return _POOL
 
