@@ -9,12 +9,21 @@
  "min_gap_minutes": 120,
  "min_ai_score": 55,
  "music": {
-  "enabled": false,
+  "enabled": true,
   "tracks": [
    "Housewife",
    "Pump It",
    "Dracula",
    "Work hard, dream big"
+  ],
+  "searches": [
+   "hardstyle",
+   "sped up",
+   "pop remix",
+   "hype",
+   "gym",
+   "workout",
+   "trap"
   ],
   "audio_volume": 22,
   "video_volume": 100,
