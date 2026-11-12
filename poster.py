@@ -377,7 +377,26 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
         out.append({"date": day.isoformat(), "perDay": len(rows), "slots": rows})
     return {"target": "togi", "platform": "instagram", "account": rules.account, "on": rules.on,
             "tz": str(rules.tz.key), "times": rules.slots, "minScore": rules.min_score,
-            "pool": total, "leftAfter": len(left), "via": "github", "days": out}
+            "pool": total, "leftAfter": len(left), "via": "github", "days": out,
+            "reels": reels_summary(posted)}
+
+
+REEL_METRICS = ("views", "reach", "likes", "comments", "shares", "saved")
+
+
+def reels_summary(posted: list[dict], limit: int = 60) -> list[dict]:
+    """Všechny zveřejněné reely i s čísly — KLAPKA z nich staví „Videa“ v Přehledu účtu
+    (Simon 12. 11.: „úspěšnost konkrétních videí a možnost je rozkliknout“). Jde to
+    s plánem v jednom řádku Nastavení, takže to nestojí žádné volání Airtable navíc."""
+    out = []
+    for p in sorted(posted, key=lambda e: e.get("at", ""), reverse=True)[:limit]:
+        m = p.get("metrics") or {}
+        out.append({"clipId": p["id"], "title": p.get("title", ""), "at": p["at"], "url": p.get("url", ""),
+                    "kategorie": p.get("kategorie", "momentka"), "score": int(p.get("score") or 0),
+                    "music": p.get("music", ""), "artist": p.get("artist", ""),
+                    "baked": bool(p.get("baked_audio")), "caption": (p.get("caption") or "")[:600],
+                    "m": {k: int(m.get(k) or 0) for k in REEL_METRICS}, "mAt": m.get("at", "")})
+    return out
 
 
 def push_plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, state: dict,
@@ -398,6 +417,50 @@ def push_plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datet
 
 
 # ── statistiky ───────────────────────────────────────────────
+F_CFID = "fldM38mOpEAVbay8h"     # Klipy → ClipForge ID
+
+
+def link_missing_recs(posted: list[dict], now: dt.datetime) -> set[str]:
+    """Reel, který šel ven dřív, než Mac poslal jeho řádek do KLAPKY, nemá `klipy_rec`
+    — a čísla by se k němu nikdy nezapsala („god exposed“ 11. 11.). Dohledá řádek
+    podle ClipForge ID. Jen u reelů z posledních 3 dnů, ať smazaný řádek nežere
+    volání Airtable navždy. Vrací ID reelů, které se právě napojily."""
+    missing = [e for e in posted if not e.get("klipy_rec")
+               and (now - parse(e["at"])).total_seconds() < 3 * 86400]
+    tok, base = os.environ.get("AIRTABLE_TOKEN"), os.environ.get("KLAPKA_BASE_ID")
+    if not missing or not tok or not base:
+        return set()
+    by_cf, offset = {}, None
+    try:
+        for _ in range(5):
+            params = {"fields[]": F_CFID, "returnFieldsByFieldId": "true", "pageSize": 100}
+            if offset:
+                params["offset"] = offset
+            r = requests.get(f"{AIRTABLE}/{base}/{T_CLIPS}", params=params, timeout=45,
+                             headers={"Authorization": f"Bearer {tok}"})
+            if not r.ok:
+                log(f"Airtable {r.status_code}: {r.text[:200]}")
+                return set()
+            js = r.json()
+            for rec in js.get("records", []):
+                cf = (rec.get("fields") or {}).get(F_CFID)
+                if cf:
+                    by_cf[cf] = rec["id"]
+            offset = js.get("offset")
+            if not offset:
+                break
+    except requests.RequestException as exc:
+        log(f"řádky klipů nejdou načíst: {str(exc)[:100]}")
+        return set()
+    out = set()
+    for e in missing:
+        if by_cf.get(e["id"]):
+            e["klipy_rec"] = by_cf[e["id"]]
+            out.add(e["id"])
+            log(f"reel {e['id']} napojen na řádek v KLAPCE ({e['klipy_rec']})")
+    return out
+
+
 def refresh_metrics(ig: "IG", rules: Rules, posted: list[dict], now: dt.datetime, state: dict) -> bool:
     """Čísla reelů z Instagramu → posted.json a KLAPKA (Views, Lajky, …).
 
@@ -409,6 +472,7 @@ def refresh_metrics(ig: "IG", rules: Rules, posted: list[dict], now: dt.datetime
     if last and (now - parse(last)).total_seconds() < METRICS_EVERY_H * 3600:
         return False
     changed = []
+    linked = link_missing_recs(posted, now)
     for e in posted:
         if not e.get("media_id"):
             continue
@@ -419,11 +483,19 @@ def refresh_metrics(ig: "IG", rules: Rules, posted: list[dict], now: dt.datetime
             continue
         m = {x["name"]: (x.get("values") or [{}])[0].get("value", 0) for x in d.get("data", [])}
         old = {k: v for k, v in (e.get("metrics") or {}).items() if k != "at"}
-        if m != old:
+        if m != old or e["id"] in linked:
             changed.append(e)
         e["metrics"] = {**m, "at": iso(now)}
-    recs = [{"id": e["klipy_rec"], "fields": {F_METRIC[k]: int(e["metrics"].get(k) or 0) for k in F_METRIC}}
-            for e in changed if e.get("klipy_rec")]
+    recs = []
+    for e in changed:
+        if not e.get("klipy_rec"):
+            continue
+        fields = {F_METRIC[k]: int(e["metrics"].get(k) or 0) for k in F_METRIC}
+        if e["id"] in linked:      # řádek dosud o postu nevěděl — doplnit i to, co by zapsal post_one
+            fields.update({F["stage"]: "published", F["url"]: e.get("url", ""), F["published"]: e["at"],
+                           F["platform"]: "instagram", F_CATEGORY: e.get("kategorie", "momentka"),
+                           **({F["account"]: rules.account_rec} if rules.account_rec else {})})
+        recs.append({"id": e["klipy_rec"], "fields": fields})
     for i in range(0, len(recs), 10):
         airtable("PATCH", T_CLIPS, recs[i:i + 10])
     try:
@@ -436,7 +508,7 @@ def refresh_metrics(ig: "IG", rules: Rules, posted: list[dict], now: dt.datetime
     state["metrics_at"] = iso(now)
     total = sum(int((e.get("metrics") or {}).get("views") or 0) for e in posted)
     log(f"statistiky: {len(posted)} reelů, celkem {total} zhlédnutí, změna u {len(changed)}")
-    return bool(changed)
+    return bool(changed or linked)
 
 
 # ── hlavní smyčka ────────────────────────────────────────────
