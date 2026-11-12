@@ -11,30 +11,31 @@
  "music": {
   "enabled": true,
   "tracks": [
-   "Flower In A Hurricane",
-   "Grand Theft Auto: San Andreas",
-   "Nicole Kidman",
-   "What's Up",
-   "BbY WOW",
-   "Ain't In LA",
-   "You Make My Dreams",
-   "Housewife",
-   "Pump It",
-   "Dracula",
-   "Work hard, dream big"
+   "Housewife — Tate McRae",
+   "I Kissed a Girl — Katy Perry",
+   "Part Of Me — Katy Perry",
+   "Hot N Cold — Katy Perry",
+   "Teenage Dream — Katy Perry",
+   "The One That Got Away — Katy Perry",
+   "Love Story — Taylor Swift",
+   "Payphone — Maroon 5",
+   "Cool for the Summer — Demi Lovato",
+   "Here — Alessia Cara",
+   "Call Me Maybe — Carly Rae Jepsen"
   ],
-  "searches": [
-   "hardstyle",
-   "sped up",
-   "pop remix",
-   "hype",
-   "gym",
-   "workout",
-   "trap"
+  "niche_artists": [
+   "Tate McRae",
+   "Katy Perry",
+   "Taylor Swift",
+   "Maroon 5",
+   "Demi Lovato",
+   "Alessia Cara",
+   "Carly Rae Jepsen"
   ],
+  "repeat": true,
+  "avoid_last": 1,
   "audio_volume": 22,
-  "video_volume": 100,
-  "avoid_last": 2
+  "video_volume": 100
  },
  "attribution": "clips from kick.com/togi",
  "banned_tags": [
