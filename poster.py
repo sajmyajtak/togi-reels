@@ -437,7 +437,11 @@ def refresh_metrics(ig: "IG", rules: Rules, posted: list[dict], now: dt.datetime
 
 
 # ── hlavní smyčka ────────────────────────────────────────────
-def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: bool) -> dict | None:
+HOLD = "pockat"          # post_one: teď nepostovat (chybí hudba), zkusit za chvíli
+HOLD_S = 10 * 60
+
+
+def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: bool) -> dict | str | None:
     items = pool(queue, posted, rules)
     if not items:
         log("zásoba je prázdná — nic k postování")
@@ -451,27 +455,40 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
         f"hudba: {clip.get('hudba') + ' (ve videu)' if baked else (song or {}).get('title', '—')} – {(song or {}).get('artist', '')}")
     if dry:
         return None
+    # POJISTKA (Simon 12. 11.: „UŽ AŤ SE TO NEOPAKUJE“): momentka nikdy bez hudby.
+    # Radši počkat a zkusit znovu než zveřejnit reel jen s hlasem — zvuk už po
+    # zveřejnění změnit nejde. Kombo/edit má hudbu ve videu, to jde vždycky.
+    if not baked and not song:
+        log("❌ NEPOSTUJU: momentka by byla bez hudby (hudba vypnutá nebo žádná k dispozici) — zkusím znovu")
+        return HOLD
     video = download(clip)
-    audio, video_url, note = None, None, ""
-    if song:
+    cap = caption_for(clip, rules)
+    audio, note = None, ""
+    if baked:
+        res = ig.publish(video, cap, None, None)
+    else:
         try:
-            audio = {"audio_id": song["audio_id"], "audio_volume": int(rules.music.get("audio_volume", 22)),
-                     "video_volume": int(rules.music.get("video_volume", 100))}
             video_url = host_on_klapka(video)
         except Exception as exc:
-            note = f"bez hudby: {str(exc)[:160]}"
-            audio, video_url = None, None
-            log(note)
-    cap = caption_for(clip, rules)
-    try:
-        res = ig.publish(video, cap, audio, video_url)
-    except Exception as exc:
-        if not audio:
-            raise
-        note = f"hudbu Instagram nepřijal: {str(exc)[:160]}"
-        log(note + " — posílám bez ní")
-        audio = None
-        res = ig.publish(video, cap, None, None)
+            log(f"❌ NEPOSTUJU: video pro hudbu nejde vystavit přes KLAPKU ({str(exc)[:160]}) — zkusím znovu")
+            return HOLD
+        res = None
+        for k in range(3):                   # když Instagram písničku nepřijme, zkusit další
+            s = song if k == 0 else pick_song(ig, rules, posted, skip=k)
+            if not s:
+                break
+            audio = {"audio_id": s["audio_id"], "audio_volume": int(rules.music.get("audio_volume", 22)),
+                     "video_volume": int(rules.music.get("video_volume", 100))}
+            try:
+                res = ig.publish(video, cap, audio, video_url)
+                song = s
+                break
+            except Exception as exc:
+                note = f"hudbu {s.get('title', '')} Instagram nepřijal: {str(exc)[:160]}"
+                log(note)
+        if not res:
+            log("❌ NEPOSTUJU: Instagram nepřijal žádnou hudbu — zkusím znovu")
+            return HOLD
     entry = {"id": clip["id"], "at": iso(dt.datetime.now(dt.timezone.utc)), "url": res["url"],
              "media_id": res["media_id"], "title": clip.get("header", ""), "score": clip.get("score"),
              "music": (clip.get("hudba", "") if baked else (song["title"] if audio else "")),
@@ -510,6 +527,13 @@ def main() -> int:
         why = due(rules, posted, ig.last_post(), now)
         if not why:
             entry = post_one(ig, rules, queue, posted, args.dry_run)
+            if entry == HOLD:
+                state["held"] = {"at": iso(now), "why": "momentka by byla bez hudby"}
+                save("state.json", state)
+                if time.time() + HOLD_S > deadline:
+                    break                          # další běh to zkusí znovu
+                time.sleep(HOLD_S)
+                continue
             if entry:
                 posted.append(entry)
                 save("posted.json", posted)
