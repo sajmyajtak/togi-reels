@@ -149,7 +149,7 @@ def next_slot(rules: Rules, posted: list[dict], now: dt.datetime) -> dt.datetime
     return future[0] if future else None
 
 
-BLOCK = ("christmas", "xmas", "santa", "noel", "jingle", "snow", "winter", "lullaby", "holiday",
+BLOCK = ("phonk", "christmas", "xmas", "santa", "noel", "jingle", "snow", "winter", "lullaby", "holiday",
          "navidad", "weihnacht", "vánoc", "december", "silent night")
 TREND_ARTISTS = ("jay-z", "beyoncé", "travis scott", "drake", "kanye", "ye", "future", "metro boomin",
                  "kendrick", "eminem", "50 cent", "lil wayne", "21 savage", "playboi carti", "don toliver",
@@ -178,7 +178,7 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
     Hity bere Instagram přes API jen z aktuálních trendů (z 58 známých
     rap/gym hitů nebyl v katalogu ani jeden, trendy ano). Proto: nejdřív
     dnešní trendy bez vánočních apod., pak volné skladby Mety ve stylu
-    TOGI niche (phonk, gym, hype). Každý post dostane jinou (Simon 11. 11.).
+    TOGI niche (gym, hype, hardstyle — bez phonku). Každý post dostane jinou (Simon 11. 11.).
     """
     if _POOL:
         return _POOL
