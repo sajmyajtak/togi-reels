@@ -33,7 +33,7 @@
    "Carly Rae Jepsen"
   ],
   "repeat": true,
-  "avoid_last": 1,
+  "avoid_last": 0,
   "audio_volume": 22,
   "video_volume": 100
  },
