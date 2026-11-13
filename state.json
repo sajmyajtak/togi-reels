@@ -2,5 +2,9 @@
  "plan_fp": "d600a17547831c9d9791e2e1aa1963331cfea002",
  "plan_rec": "recdXIAwyYFkBpfNV",
  "followers": 6,
- "metrics_at": "2026-11-13T09:21:32+00:00"
+ "metrics_at": "2026-11-13T15:30:35+00:00",
+ "held": {
+  "at": "2026-11-13T15:20:34+00:00",
+  "why": "momentka by byla bez hudby"
+ }
 }
