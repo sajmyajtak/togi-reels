@@ -78,15 +78,21 @@ def git_commit(msg: str) -> None:
     if run("diff", "--cached", "--quiet").returncode == 0:
         return
     run("commit", "-m", msg)
-    run("pull", "--rebase", "origin", os.environ.get("GITHUB_REF_NAME", "main"))
+    run("pull", "--rebase", "--autostash", "origin", os.environ.get("GITHUB_REF_NAME", "main"))
     r = run("push", "origin", f"HEAD:{os.environ.get('GITHUB_REF_NAME', 'main')}")
     log("commit " + ("✓" if r.returncode == 0 else f"selhal: {r.stderr[:160]}"))
 
 
 def git_pull() -> None:
+    """--autostash: po HOLD je state.json změněný a neuložený — bez toho git pull
+    tiše selhal a běh nikdy nenačetl nová pravidla (13. 11. večer čekal 3 h
+    se starým nastavením hudby, i když oprava už byla na GitHubu)."""
     if os.environ.get("POSTER_GIT_COMMIT") == "1":
-        subprocess.run(["git", "pull", "--rebase", "origin", os.environ.get("GITHUB_REF_NAME", "main")],
-                       cwd=ROOT, check=False, capture_output=True)
+        r = subprocess.run(["git", "pull", "--rebase", "--autostash", "origin",
+                            os.environ.get("GITHUB_REF_NAME", "main")],
+                           cwd=ROOT, check=False, capture_output=True, text=True)
+        if r.returncode != 0:
+            log(f"git pull selhal: {(r.stderr or r.stdout)[:160]}")
 
 
 # ── pravidla a výběr ─────────────────────────────────────────
