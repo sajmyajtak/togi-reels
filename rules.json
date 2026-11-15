@@ -29,6 +29,228 @@
    "511385361611273",
    "686332403966880"
   ],
+  "categories": [
+   {
+    "id": "penize",
+    "label": "Peníze a flex",
+    "emoji": "💸",
+    "words": [
+     "money",
+     "rich",
+     "broke",
+     "loan",
+     "cash",
+     "dollar",
+     "million",
+     "billion",
+     "$",
+     "finance",
+     "expensive",
+     "cheap",
+     "price",
+     "spent",
+     "spend",
+     "buy",
+     "bought",
+     "watches",
+     "rolex",
+     "lambo",
+     "flex",
+     "paid",
+     "salary",
+     "debt",
+     "wealth",
+     "financ",
+     "irs",
+     "owes",
+     "worth",
+     "invest",
+     "jet",
+     "mansion",
+     "jewel"
+    ]
+   },
+   {
+    "id": "gym",
+    "label": "Gym a postava",
+    "emoji": "🏋️",
+    "words": [
+     "gym",
+     "fitness",
+     "physique",
+     "muscle",
+     "bulk",
+     "lift",
+     "bench",
+     "squat",
+     "deadlift",
+     "protein",
+     "steroid",
+     "roids",
+     "sulek",
+     "workout",
+     "biceps",
+     "wrist",
+     "cardio",
+     "bodybuilding",
+     "natty",
+     "shredded"
+    ]
+   },
+   {
+    "id": "jidlo",
+    "label": "Jídlo",
+    "emoji": "🍔",
+    "words": [
+     "food",
+     "meal",
+     "eat",
+     "diet",
+     "calories",
+     "pizza",
+     "burger",
+     "mcdonald",
+     "chicken",
+     "rice",
+     "snack",
+     "hungry",
+     "cook",
+     "breakfast",
+     "dinner",
+     "lunch"
+    ]
+   },
+   {
+    "id": "trapas",
+    "label": "Trapas a fail",
+    "emoji": "🙈",
+    "words": [
+     "fail",
+     "cringe",
+     "exposed",
+     "caught",
+     "awkward",
+     "embarrass",
+     "roast",
+     "rejected",
+     "oops",
+     "lied",
+     "fake",
+     "allegations",
+     "scam",
+     "yo-yo",
+     "iq",
+     "dumb",
+     "stupid",
+     "dating"
+    ]
+   },
+   {
+    "id": "chaos",
+    "label": "Chaos a rage",
+    "emoji": "🤯",
+    "words": [
+     "rage",
+     "angry",
+     "mad",
+     "scream",
+     "yell",
+     "crazy",
+     "insane",
+     "chaos",
+     "fight",
+     "panic",
+     "unhinged",
+     "psycho",
+     "lost it",
+     "lmao"
+    ]
+   },
+   {
+    "id": "drama",
+    "label": "Vážná chvíle",
+    "emoji": "🎭",
+    "words": [
+     "serious",
+     "honest",
+     "truth",
+     "evil",
+     "dark",
+     "sad",
+     "cry",
+     "story",
+     "confess",
+     "deep",
+     "emotional",
+     "regret",
+     "wishes",
+     "dream",
+     "lonely",
+     "lesson",
+     "god",
+     "devil",
+     "jesus",
+     "bible",
+     "spiritual",
+     "pray"
+    ]
+   }
+  ],
+  "song_cats": {
+   "29185282764392025": [
+    "gym",
+    "chaos"
+   ],
+   "1301995714370720": [
+    "drama"
+   ],
+   "26362560926774085": [
+    "drama",
+    "trapas"
+   ],
+   "29105845065673792": [
+    "chaos",
+    "trapas"
+   ],
+   "734362446128785": [
+    "drama"
+   ],
+   "26635756519408401": [
+    "penize",
+    "chaos"
+   ],
+   "27230732999887948": [
+    "gym",
+    "drama"
+   ],
+   "1057550505685532": [
+    "gym",
+    "trapas",
+    "jidlo"
+   ],
+   "621428443674601": [
+    "drama"
+   ],
+   "623144703039058": [
+    "gym",
+    "jidlo"
+   ],
+   "1154774592785809": [
+    "drama",
+    "chaos"
+   ],
+   "37034329452847962": [
+    "penize"
+   ],
+   "511385361611273": [
+    "penize",
+    "drama"
+   ],
+   "686332403966880": [
+    "trapas",
+    "jidlo"
+   ]
+  },
   "repeat": true,
   "avoid_last": 0,
   "audio_volume": 22,

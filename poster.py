@@ -22,6 +22,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -270,6 +271,83 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
     return out
 
 
+# ── Galerie písniček (KLAPKA → Autoclipping → účet → Hudba) ──
+# Simon 15. 11.: „galerie písniček ke každému účtu, roztřídíme je do kategorií,
+# na jaké video se hodí“. Výchozí kategorie a zařazení jsou v rules.json
+# (`categories`, `song_cats`); Simonovy úpravy z KLAPKY leží v Nastavení pod
+# SONGS_KEY a stahují se jen před postem (Airtable free: 1 000 volání/měsíc).
+SONGS_KEY = "clipforge.songs.togi"
+SONG_OVR: dict = {}          # {"cats": {audio_id: [kat]}, "off": [audio_id], "at": …} — plní main ze state
+
+
+def fetch_song_overrides(state: dict) -> None:
+    """Úpravy z Galerie písniček v KLAPCE → state["songs_ovr"]. Nejvýš jednou za 30 min."""
+    last = state.get("songs_fetched")
+    if last and (dt.datetime.now(dt.timezone.utc) - parse(last)).total_seconds() < 1800:
+        return
+    tok, base = os.environ.get("AIRTABLE_TOKEN"), os.environ.get("KLAPKA_BASE_ID")
+    if not tok or not base:
+        return
+    h = {"Authorization": f"Bearer {tok}"}
+    try:
+        rec, val = state.get("songs_rec"), None
+        if rec:
+            r = requests.get(f"{AIRTABLE}/{base}/{T_SETTINGS}/{rec}", headers=h, timeout=30,
+                             params={"returnFieldsByFieldId": "true"})
+            if r.ok:
+                val = (r.json().get("fields") or {}).get(F_SET_VAL, "")
+            else:
+                rec = None
+        if not rec:
+            r = requests.get(f"{AIRTABLE}/{base}/{T_SETTINGS}", headers=h, timeout=30,
+                             params={"returnFieldsByFieldId": "true", "pageSize": 1,
+                                     "filterByFormula": f"{{Klíč}}='{SONGS_KEY}'"})
+            rows = r.json().get("records", []) if r.ok else []
+            if rows:
+                rec, val = rows[0]["id"], (rows[0].get("fields") or {}).get(F_SET_VAL, "")
+        state["songs_fetched"] = iso(dt.datetime.now(dt.timezone.utc))
+        if rec:
+            state["songs_rec"] = rec
+        if val:
+            ovr = json.loads(val)
+            if ovr != state.get("songs_ovr"):
+                log(f"galerie písniček z KLAPKY: {len(ovr.get('cats') or {})} zařazených, {len(ovr.get('off') or [])} vypnutých")
+            state["songs_ovr"] = ovr
+    except (requests.RequestException, ValueError) as exc:
+        log(f"galerie písniček z KLAPKY nejde načíst: {str(exc)[:120]}")
+    SONG_OVR.clear()
+    SONG_OVR.update(state.get("songs_ovr") or {})
+
+
+def song_cats(a: dict, rules: Rules) -> list[str]:
+    """Na jaká videa se písnička hodí: Simonova úprava v KLAPCE > výchozí z rules. [] = na cokoli."""
+    ovr = SONG_OVR.get("cats") or {}
+    if a["audio_id"] in ovr:
+        return list(ovr[a["audio_id"]] or [])
+    return list((rules.music.get("song_cats") or {}).get(a["audio_id"]) or [])
+
+
+def clip_cats(clip: dict, rules: Rules) -> list[str]:
+    """Typ videa podle titulku, hashtagů a popisku (slova u kategorie v rules)."""
+    text = " ".join([clip.get("header") or "", " ".join(clip.get("hashtags") or []),
+                     clip.get("caption") or ""]).lower()
+    tokens = re.findall(r"[a-z0-9]+", text)
+    out = []
+    for c in rules.music.get("categories") or []:
+        for w in c.get("words") or []:
+            w = str(w).lower()
+            if not w:
+                continue
+            if not w.isalnum() or " " in w:
+                hit = w in text                                  # emoji, „$“, víc slov
+            else:
+                hit = any(t == w or (len(w) >= 4 and t.startswith(w)) for t in tokens)
+            if hit:
+                out.append(c["id"])
+                break
+    return out
+
+
 def song_key(title: str, rules: Rules) -> str:
     """Která niche písnička to je (i remix) — dvě verze téže ne po sobě."""
     t = _norm(title)
@@ -277,20 +355,23 @@ def song_key(title: str, rules: Rules) -> str:
 
 
 def pick_song(ig: "IG", rules: Rules, posted: list[dict], skip: int = 0, min_s: float = 0,
-              plan: bool = False) -> dict | None:
-    """Niche písnička pro momentku (`skip` = kolik dalších přeskočit — pro plán
-    a pro další pokus, když Instagram písničku nepřijme; `min_s` = délka klipu:
-    kratší zvuk by před koncem videa utichl; `plan` = písničky se v plánu točí
-    dokola jako ve skutečnosti).
+              clip: dict | None = None) -> dict | None:
+    """Písnička pro momentku (`skip` = kolik dalších přeskočit, když Instagram
+    písničku nepřijme; `min_s` = délka klipu: kratší zvuk by před koncem videa
+    utichl; `clip` = video, ke kterému se vybírá — podle jeho typu kategorie).
 
-    Napřed hudba SE JMÉNEM (knihovna IG), z ní ty, co ještě nehrály; když dojdou,
-    s `repeat` ta, co hrála nejdávněji (ne z posledních `avoid_last` postů).
-    Původní zvuky z cizích reelů (na reelu „Původní zvuk“) až za nimi a jen
-    s `original_fallback`. Nic → None a momentka počká (cizí hudbu radši ne).
+    Napřed písničky z kategorie videa (Galerie v KLAPCE), pak ty „na cokoli“
+    (bez kategorie); když video do žádné kategorie nespadá nebo pro něj nic
+    není, všechny. V každé skupině napřed hudba SE JMÉNEM (knihovna IG), z ní
+    ty, co ještě nehrály; pak s `repeat` ta, co hrála nejdávněji. Původní
+    zvuky z cizích reelů (na reelu „Původní zvuk“) za nimi a jen
+    s `original_fallback`. Vypnuté v Galerii nikdy. Nic → None a momentka počká.
     """
     if not rules.music.get("enabled"):
         return None
-    pool = [a for a in song_pool(ig, rules) if not min_s or not a.get("ms") or a["ms"] >= min_s * 1000]
+    off = set(SONG_OVR.get("off") or [])
+    pool = [{**a, "cats": song_cats(a, rules)} for a in song_pool(ig, rules)
+            if a["audio_id"] not in off and (not min_s or not a.get("ms") or a["ms"] >= min_s * 1000)]
     hist = sorted(posted, key=lambda p: p.get("at", ""))
     last: dict[str, int] = {}
     for i, p in enumerate(hist):
@@ -309,11 +390,21 @@ def pick_song(ig: "IG", rules: Rules, posted: list[dict], skip: int = 0, min_s: 
             order += sorted((a for a in cands if 0 <= used(a) < cut), key=used)
         return order
 
-    named = ordered([a for a in pool if a.get("linked")])
-    if plan and named and rules.music.get("repeat", True):
-        return named[skip % len(named)]
-    order = named + (ordered([a for a in pool if not a.get("linked")])
-                     if rules.music.get("original_fallback", True) else [])
+    def chain(cands: list[dict]) -> list[dict]:
+        return ordered([a for a in cands if a.get("linked")]) + (
+            ordered([a for a in cands if not a.get("linked")]) if rules.music.get("original_fallback", True) else [])
+
+    want = set(clip_cats(clip, rules)) if clip else set()
+    fit = [a for a in pool if want & set(a["cats"])]
+    anyv = [a for a in pool if not a["cats"]]
+    order = chain(fit) + chain(anyv) if want else []
+    if not order:
+        order = chain(pool)
+    # stejná písnička jako minule až po jiné, když nějaká jiná jde
+    if len(order) > 1 and song_key(order[0]["title"], rules) == prev:
+        alt = next((i for i, a in enumerate(order) if song_key(a["title"], rules) != prev), None)
+        if alt:
+            order.insert(0, order.pop(alt))
     return order[skip] if skip < len(order) else None
 
 
@@ -433,7 +524,7 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
     local = now.astimezone(rules.tz)
     left = pool(queue, posted, rules)
     total = len(left)
-    music_hist = [p.get("music", "") for p in posted]
+    sim = list(posted)          # plán „odehraje“ budoucí posty, ať se písničky točí jako ve skutečnosti
     out = []
     for k in range(days):
         day = local.date() + dt.timedelta(days=k)
@@ -448,23 +539,39 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
                              "views": int((p.get("metrics") or {}).get("views") or 0)})
                 continue
             c = left.pop(0) if left else None
-            song = ""
+            song, song_id = "", ""
             if c and c.get("zvuk") == "puvodni":
                 song = f"{c.get('hudba', '')} (ve videu)"
             elif c and ig is not None:
-                nxt = pick_song(ig, rules, posted, skip=music_hist.count("__planned__"),
-                                min_s=float(c.get("duration_s") or 0), plan=True)
-                song = f"{nxt['title']} – {nxt['artist']}" if nxt else "čeká na niche písničku"
-                music_hist.append("__planned__")
+                nxt = pick_song(ig, rules, sim, min_s=float(c.get("duration_s") or 0), clip=c)
+                song = f"{nxt['title']} – {nxt['artist']}" if nxt else "čeká na písničku z galerie"
+                if nxt:
+                    sim.append({"at": iso(at), "music": nxt["title"], "audio_id": nxt["audio_id"]})
+                    song_id = nxt["audio_id"]
             rows.append({"at": iso(at), "status": "planned" if c else "empty", "clipId": c["id"] if c else "",
                          "kategorie": (c or {}).get("kategorie", "momentka") if c else "",
                          "title": c.get("header", "") if c else "", "score": int(c.get("score") or 0) if c else 0,
-                         "music": song})
+                         "music": song, "audioId": song_id, "cats": clip_cats(c, rules) if c else []})
         out.append({"date": day.isoformat(), "perDay": len(rows), "slots": rows})
     return {"target": "togi", "platform": "instagram", "account": rules.account, "on": rules.on,
             "tz": str(rules.tz.key), "times": rules.slots, "minScore": rules.min_score,
             "pool": total, "leftAfter": len(left), "via": "github", "days": out,
-            "reels": reels_summary(posted)}
+            "reels": reels_summary(posted), **songs_summary(rules, ig)}
+
+
+def songs_summary(rules: Rules, ig: "IG | None") -> dict:
+    """Galerie písniček pro KLAPKU: co poster zná (název, interpret, délka) a kam je zařadil."""
+    if ig is None:
+        return {}
+    off = set(SONG_OVR.get("off") or [])
+    songs = [{"audioId": a["audio_id"], "title": a["title"], "artist": a["artist"], "ms": a.get("ms", 0),
+              "linked": bool(a.get("linked")), "cats": song_cats(a, rules),
+              "defCats": list((rules.music.get("song_cats") or {}).get(a["audio_id"]) or []),
+              "off": a["audio_id"] in off}
+             for a in song_pool(ig, rules)]
+    cats = [{"id": c["id"], "label": c.get("label", c["id"]), "emoji": c.get("emoji", "")}
+            for c in rules.music.get("categories") or []]
+    return {"songs": songs, "songCats": cats, "songsAt": SONG_OVR.get("at", "")}
 
 
 REEL_METRICS = ("views", "reach", "likes", "comments", "shares", "saved")
@@ -481,7 +588,10 @@ def reels_summary(posted: list[dict], limit: int = 60) -> list[dict]:
                     "kategorie": p.get("kategorie", "momentka"), "score": int(p.get("score") or 0),
                     "music": p.get("music", ""), "artist": p.get("artist", ""),
                     "baked": bool(p.get("baked_audio")), "caption": (p.get("caption") or "")[:600],
-                    "m": {k: int(m.get(k) or 0) for k in REEL_METRICS}, "mAt": m.get("at", "")})
+                    "m": {k: int(m.get(k) or 0) for k in REEL_METRICS}, "mAt": m.get("at", ""),
+                    "audioId": p.get("audio_id", ""), "cats": p.get("cats") or [],
+                    "h": [[round((parse(t) - parse(p["at"])).total_seconds() / 3600, 1), v]
+                          for t, v in (p.get("mh") or [])]})
     return out
 
 
@@ -572,6 +682,10 @@ def refresh_metrics(ig: "IG", rules: Rules, posted: list[dict], now: dt.datetime
         if m != old or e["id"] in linked:
             changed.append(e)
         e["metrics"] = {**m, "at": iso(now)}
+        # vývoj zhlédnutí → graf v Galerii písniček (kdy algoritmus video vyhnal nahoru)
+        mh = e.get("mh") or []
+        if not mh or mh[-1][1] != int(m.get("views") or 0):
+            e["mh"] = (mh + [[iso(now), int(m.get("views") or 0)]])[-30:]
     recs = []
     for e in changed:
         if not e.get("klipy_rec"):
@@ -612,8 +726,9 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
     # z knihovny Instagramu by hrála přes ni (Simon 11. 11.).
     baked = clip.get("zvuk") == "puvodni"
     clip_s = float(clip.get("duration_s") or 0)
-    song = None if baked else pick_song(ig, rules, posted, min_s=clip_s)
-    log(f"na řadě: {clip['id']} „{clip.get('header', '')}“ ({clip.get('score')}/100), "
+    song = None if baked else pick_song(ig, rules, posted, min_s=clip_s, clip=clip)
+    log(f"na řadě: {clip['id']} „{clip.get('header', '')}“ ({clip.get('score')}/100, "
+        f"typ videa: {', '.join(clip_cats(clip, rules)) or 'obecné'}), "
         f"hudba: {clip.get('hudba') + ' (ve videu)' if baked else (song or {}).get('title', '—')} – {(song or {}).get('artist', '')}")
     if dry:
         return None
@@ -621,7 +736,7 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
     # Radši počkat a zkusit znovu než zveřejnit reel jen s hlasem — zvuk už po
     # zveřejnění změnit nejde. Kombo/edit má hudbu ve videu, to jde vždycky.
     if not baked and not song:
-        log("❌ NEPOSTUJU: momentka by byla bez hudby (žádná niche písnička k dispozici) — zkusím znovu")
+        log("❌ NEPOSTUJU: momentka by byla bez hudby (žádná písnička z galerie k dispozici) — zkusím znovu")
         return HOLD
     video = download(clip)
     cap = caption_for(clip, rules)
@@ -636,7 +751,7 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
             return HOLD
         res = None
         for k in range(3):                   # když Instagram písničku nepřijme, zkusit další
-            s = song if k == 0 else pick_song(ig, rules, posted, skip=k, min_s=clip_s)
+            s = song if k == 0 else pick_song(ig, rules, posted, skip=k, min_s=clip_s, clip=clip)
             if not s:
                 break
             audio = {"audio_id": s["audio_id"], "audio_volume": int(rules.music.get("audio_volume", 22)),
@@ -656,7 +771,8 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
              "music": (clip.get("hudba", "") if baked else (song["title"] if audio else "")),
              "artist": song.get("artist", "") if audio else "", "baked_audio": baked,
              "audio_id": song["audio_id"] if audio else "", "caption": cap, "note": note,
-             "klipy_rec": clip.get("klipy_rec", ""), "kategorie": clip.get("kategorie", "momentka")}
+             "klipy_rec": clip.get("klipy_rec", ""), "kategorie": clip.get("kategorie", "momentka"),
+             "cats": clip_cats(clip, rules)}
     log(f"✅ venku: {res['url']}")
     if clip.get("klipy_rec"):
         airtable("PATCH", T_CLIPS, [{"id": clip["klipy_rec"], "fields": {
@@ -676,6 +792,7 @@ def main() -> int:
     args = ap.parse_args()
     deadline = time.time() + args.wait * 60
     state = load("state.json", {})
+    SONG_OVR.update(state.get("songs_ovr") or {})
     ig = IG()
     while True:
         git_pull()
@@ -688,6 +805,7 @@ def main() -> int:
         push_plan(rules, queue, posted, now, state, ig)
         why = due(rules, posted, ig.last_post(), now)
         if not why:
+            fetch_song_overrides(state)               # Simonovy úpravy Galerie písniček — jen před postem
             entry = post_one(ig, rules, queue, posted, args.dry_run)
             if entry == HOLD:
                 state["held"] = {"at": iso(now), "why": "momentka by byla bez hudby"}
