@@ -10,47 +10,10 @@
  "min_ai_score": 55,
  "music": {
   "enabled": true,
-  "tracks": [
-   "Housewife — Tate McRae",
-   "I Kissed a Girl — Katy Perry",
-   "Part Of Me — Katy Perry",
-   "Hot N Cold — Katy Perry",
-   "Teenage Dream — Katy Perry",
-   "The One That Got Away — Katy Perry",
-   "Love Story — Taylor Swift",
-   "Payphone — Maroon 5",
-   "Cool for the Summer — Demi Lovato",
-   "Here — Alessia Cara",
-   "Call Me Maybe — Carly Rae Jepsen",
-   "Grand Theft Auto: San Andreas — Michael Hunter",
-   "Saxophone Getting Louder — NDIOUGA",
-   "You Make My Dreams — Daryl Hall"
-  ],
-  "niche_artists": [
-   "Tate McRae",
-   "Katy Perry",
-   "Taylor Swift",
-   "Maroon 5",
-   "Demi Lovato",
-   "Alessia Cara",
-   "Carly Rae Jepsen"
-  ],
-  "fallback_searches": [
-   "teenage dream sped up",
-   "part of me hardstyle",
-   "hot n cold sped up",
-   "i kissed a girl sped up",
-   "call me maybe sped up",
-   "love story sped up",
-   "payphone sped up",
-   "cool for the summer sped up",
-   "tate mcrae sped up",
-   "taylor swift sped up",
-   "katy perry sped up",
-   "tate mcrae"
-  ],
+  "tracks": [],
+  "niche_artists": [],
   "original_fallback": true,
-  "fallback_audio_ids": [
+  "audio_ids": [
    "29185282764392025",
    "1301995714370720",
    "26362560926774085",
