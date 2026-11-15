@@ -222,8 +222,8 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
     def add(a: dict, kind: str) -> None:
         aid = str(a.get("audio_id") or "")
         name = f"{a.get('title', '')} {a.get('display_artist', '')} {a.get('ig_username', '')}".lower()
-        if not aid or aid in seen or any(b in name for b in BLOCK):
-            return
+        if not aid or aid in seen or (kind != "simon" and any(b in name for b in BLOCK)):
+            return                                             # Simonův výběr se nefiltruje (Chopin, ukolébavky…)
         if kind != "simon" and a.get("audio_type") != "original_sound" and a.get("download_url"):
             return                                             # volná hudba Mety (Sound Collection)
         seen.add(aid)
