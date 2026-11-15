@@ -213,6 +213,12 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
     2) trend ze seznamu `tracks` / od `niche_artists`, 3) původní zvuky
     z hledání `original_searches`, jen když název obsahuje niche písničku
     nebo interpreta. Nikdy náhodný trend ani volná hudba Mety.
+
+    15. 11. Simon: „ty si tam ten zvuk nepřidal z instagramu, je tam jako
+    původní zvuk“ — PŮVODNÍ ZVUK z cizího reelu Instagram jen vmíchá do videa
+    a na reelu ukáže „Původní zvuk – togis_lifestyle“ (bez odkazu na písničku).
+    Se jménem a odkazem jde jen hudba z knihovny („music“ = trendy). Proto
+    `linked`: pick_song bere napřed tyhle, původní zvuky až jako poslední záchranu.
     """
     wants = niche_list(rules)
     artists = [_norm(x) for x in rules.music.get("niche_artists") or [] if _norm(x)]
@@ -229,9 +235,11 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
         seen.add(aid)
         out.append({"audio_id": aid, "title": a.get("title", ""),
                     "artist": a.get("display_artist") or (f"@{a['ig_username']}" if a.get("ig_username") else ""),
-                    "kind": kind, "ms": int(a.get("duration_in_ms") or 0)})
+                    "kind": kind, "ms": int(a.get("duration_in_ms") or 0),
+                    "linked": a.get("audio_type") != "original_sound"})   # na reelu se ukáže jméno písničky
 
-    for raw in rules.music.get("audio_ids") or []:             # 1) Simonovy zvuky
+    # záložní původní zvuky: klíče `fallback_*` (staré názvy `audio_ids` / `original_searches` taky platí)
+    for raw in rules.music.get("fallback_audio_ids") or rules.music.get("audio_ids") or []:   # 1) Simonovy zvuky
         aid = "".join(ch for ch in str(raw).rstrip("/").split("/")[-1].split("?")[0] if ch.isdigit())
         if not aid:
             continue
@@ -246,8 +254,8 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
         log(f"trendy hudby nejdou načíst: {str(exc)[:120]}")
     for a in trends:
         if any(fits(a, w) for w in wants) or any(x in _norm(a.get("display_artist")) for x in artists):
-            add(a, "niche")
-    for q in rules.music.get("original_searches") or []:      # 3) remixy z reelů — jen niche
+            add({**a, "audio_type": "music"}, "niche")
+    for q in rules.music.get("fallback_searches") or rules.music.get("original_searches") or []:   # 3) remixy
         try:
             res = ig.get("ig_audio", ig_user_id=ig.user, audio_type="original_sound", search_query=q).get("audio") or []
         except Exception:
@@ -256,7 +264,9 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
             name = _norm(f"{a.get('title', '')} {a.get('display_artist', '')}")
             if any(t in name for t in titles + artists):
                 add({**a, "audio_type": "original_sound"}, "remix")
-    log(f"niche hudba k dispozici ({len(out)}): " + (", ".join(f"{a['title']} – {a['artist']}" for a in out[:12]) or "žádná"))
+    ok = [a for a in out if a["linked"]]
+    log(f"niche hudba se jménem ({len(ok)}): " + (", ".join(f"{a['title']} – {a['artist']}" for a in ok[:12]) or "žádná")
+        + f" · záložní původní zvuky: {len(out) - len(ok)}")
     return out
 
 
@@ -266,13 +276,17 @@ def song_key(title: str, rules: Rules) -> str:
     return next((k for k in (_norm(w["title"]) for w in niche_list(rules)) if k and k in t), t)
 
 
-def pick_song(ig: "IG", rules: Rules, posted: list[dict], skip: int = 0, min_s: float = 0) -> dict | None:
-    """Niche písnička pro momentku (`skip` = kolik dalších přeskočit — pro plán,
-    `min_s` = délka klipu: kratší zvuk by před koncem videa utichl).
+def pick_song(ig: "IG", rules: Rules, posted: list[dict], skip: int = 0, min_s: float = 0,
+              plan: bool = False) -> dict | None:
+    """Niche písnička pro momentku (`skip` = kolik dalších přeskočit — pro plán
+    a pro další pokus, když Instagram písničku nepřijme; `min_s` = délka klipu:
+    kratší zvuk by před koncem videa utichl; `plan` = písničky se v plánu točí
+    dokola jako ve skutečnosti).
 
-    Napřed ty, co ještě nehrály (jiná písnička než minule). Když dojdou:
-    s `repeat` ta, co hrála nejdávněji, ale ne z posledních `avoid_last`
-    postů. Nic → None a momentka počká (cizí hudbu radši ne).
+    Napřed hudba SE JMÉNEM (knihovna IG), z ní ty, co ještě nehrály; když dojdou,
+    s `repeat` ta, co hrála nejdávněji (ne z posledních `avoid_last` postů).
+    Původní zvuky z cizích reelů (na reelu „Původní zvuk“) až za nimi a jen
+    s `original_fallback`. Nic → None a momentka počká (cizí hudbu radši ne).
     """
     if not rules.music.get("enabled"):
         return None
@@ -286,11 +300,20 @@ def pick_song(ig: "IG", rules: Rules, posted: list[dict], skip: int = 0, min_s: 
     def used(a: dict) -> int:
         return max(last.get(a["audio_id"], -1), last.get(_norm(a["title"]), -1))
     prev = song_key(next((p.get("music", "") for p in reversed(hist) if p.get("music")), ""), rules)
-    fresh = [a for a in pool if used(a) < 0]
-    order = sorted(fresh, key=lambda a: song_key(a["title"], rules) == prev)   # stejná písnička jako minule až nakonec
-    if rules.music.get("repeat", True):
-        cut = len(hist) - int(rules.music.get("avoid_last", 1))
-        order += sorted((a for a in pool if 0 <= used(a) < cut), key=used)
+    cut = len(hist) - int(rules.music.get("avoid_last", 1))
+
+    def ordered(cands: list[dict]) -> list[dict]:
+        fresh = [a for a in cands if used(a) < 0]
+        order = sorted(fresh, key=lambda a: song_key(a["title"], rules) == prev)   # stejná jako minule až nakonec
+        if rules.music.get("repeat", True):
+            order += sorted((a for a in cands if 0 <= used(a) < cut), key=used)
+        return order
+
+    named = ordered([a for a in pool if a.get("linked")])
+    if plan and named and rules.music.get("repeat", True):
+        return named[skip % len(named)]
+    order = named + (ordered([a for a in pool if not a.get("linked")])
+                     if rules.music.get("original_fallback", True) else [])
     return order[skip] if skip < len(order) else None
 
 
@@ -430,7 +453,7 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
                 song = f"{c.get('hudba', '')} (ve videu)"
             elif c and ig is not None:
                 nxt = pick_song(ig, rules, posted, skip=music_hist.count("__planned__"),
-                                min_s=float(c.get("duration_s") or 0))
+                                min_s=float(c.get("duration_s") or 0), plan=True)
                 song = f"{nxt['title']} – {nxt['artist']}" if nxt else "čeká na niche písničku"
                 music_hist.append("__planned__")
             rows.append({"at": iso(at), "status": "planned" if c else "empty", "clipId": c["id"] if c else "",

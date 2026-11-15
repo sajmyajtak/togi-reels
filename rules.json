@@ -21,7 +21,10 @@
    "Payphone — Maroon 5",
    "Cool for the Summer — Demi Lovato",
    "Here — Alessia Cara",
-   "Call Me Maybe — Carly Rae Jepsen"
+   "Call Me Maybe — Carly Rae Jepsen",
+   "Grand Theft Auto: San Andreas — Michael Hunter",
+   "Saxophone Getting Louder — NDIOUGA",
+   "You Make My Dreams — Daryl Hall"
   ],
   "niche_artists": [
    "Tate McRae",
@@ -32,7 +35,7 @@
    "Alessia Cara",
    "Carly Rae Jepsen"
   ],
-  "original_searches": [
+  "fallback_searches": [
    "teenage dream sped up",
    "part of me hardstyle",
    "hot n cold sped up",
@@ -46,7 +49,8 @@
    "katy perry sped up",
    "tate mcrae"
   ],
-  "audio_ids": [
+  "original_fallback": true,
+  "fallback_audio_ids": [
    "29185282764392025",
    "1301995714370720",
    "26362560926774085",
