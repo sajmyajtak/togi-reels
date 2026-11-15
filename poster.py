@@ -202,6 +202,31 @@ def song_pool(ig: "IG", rules: Rules) -> list[dict]:
     return pool
 
 
+def named_twin(ig: "IG", rules: Rules, aid: str) -> dict | None:
+    """Simonova písnička v knihovně IG (typ „music“) → na reelu se ukáže se jménem,
+    ne jako „Původní zvuk“. Simon 15. 11.: „chci to celé automaticky, ale bez
+    původního zvuku, stejně jak tam dáváš Housewife“. Meta ale automatům dává jen
+    hudbu schválenou pro aplikace — z jeho 28 uložených tam 15. 11. byl jen Chopin
+    (jiná nahrávka). `song_match` = „Název — Interpret“ jeho písničky; hledá se při
+    každém obnovení katalogu (1× za hodinu), takže až ji Meta přidá, poster ji
+    sám začne dávat se jménem. Shoda jen na název I interpreta (jinak by „Tik Tok
+    – Chela Rivas“ prošla jako Kesha)."""
+    want = (rules.music.get("song_match") or {}).get(aid)
+    if not want:
+        return None
+    title, _, artist = str(want).replace(" – ", " — ").partition(" — ")
+    t, ar = _norm(title), _norm(artist)
+    if not t or not ar:
+        return None
+    try:
+        res = ig.get("ig_audio", ig_user_id=ig.user, audio_type="music", search_query=title.strip()).get("audio") or []
+    except Exception as exc:
+        log(f"knihovna IG pro „{title.strip()}“ nejde prohledat: {str(exc)[:100]}")
+        return None
+    return next((a for a in res if a.get("audio_id") and _norm(a.get("title")).startswith(t)
+                 and ar in _norm(a.get("display_artist"))), None)
+
+
 def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
     """JEN niche písničky, které jde k reelu právě připojit.
 
@@ -234,10 +259,16 @@ def _song_pool(ig: "IG", rules: Rules) -> list[dict]:
         if kind != "simon" and a.get("audio_type") != "original_sound" and a.get("download_url"):
             return                                             # volná hudba Mety (Sound Collection)
         seen.add(aid)
-        out.append({"audio_id": aid, "title": a.get("title", ""),
+        out.append({"audio_id": aid, "gid": aid, "title": a.get("title", ""),
                     "artist": a.get("display_artist") or (f"@{a['ig_username']}" if a.get("ig_username") else ""),
                     "kind": kind, "ms": int(a.get("duration_in_ms") or 0),
                     "linked": a.get("audio_type") != "original_sound"})   # na reelu se ukáže jméno písničky
+        if kind == "simon" and not out[-1]["linked"]:
+            twin = named_twin(ig, rules, aid)
+            if twin:                                           # stejná písnička z knihovny IG → jde se jménem
+                out[-1].update(audio_id=str(twin["audio_id"]), title=twin.get("title", ""),
+                               artist=twin.get("display_artist", ""), linked=True,
+                               ms=int(twin.get("duration_in_ms") or out[-1]["ms"]), orig_title=a.get("title", ""))
 
     # záložní původní zvuky: klíče `fallback_*` (staré názvy `audio_ids` / `original_searches` taky platí)
     for raw in rules.music.get("fallback_audio_ids") or rules.music.get("audio_ids") or []:   # 1) Simonovy zvuky
@@ -321,10 +352,11 @@ def fetch_song_overrides(state: dict) -> None:
 
 def song_cats(a: dict, rules: Rules) -> list[str]:
     """Na jaká videa se písnička hodí: Simonova úprava v KLAPCE > výchozí z rules. [] = na cokoli."""
+    gid = a.get("gid") or a["audio_id"]
     ovr = SONG_OVR.get("cats") or {}
-    if a["audio_id"] in ovr:
-        return list(ovr[a["audio_id"]] or [])
-    return list((rules.music.get("song_cats") or {}).get(a["audio_id"]) or [])
+    if gid in ovr:
+        return list(ovr[gid] or [])
+    return list((rules.music.get("song_cats") or {}).get(gid) or [])
 
 
 def clip_cats(clip: dict, rules: Rules) -> list[str]:
@@ -371,28 +403,32 @@ def pick_song(ig: "IG", rules: Rules, posted: list[dict], skip: int = 0, min_s: 
         return None
     off = set(SONG_OVR.get("off") or [])
     pool = [{**a, "cats": song_cats(a, rules)} for a in song_pool(ig, rules)
-            if a["audio_id"] not in off and (not min_s or not a.get("ms") or a["ms"] >= min_s * 1000)]
+            if a.get("gid", a["audio_id"]) not in off and (not min_s or not a.get("ms") or a["ms"] >= min_s * 1000)]
     hist = sorted(posted, key=lambda p: p.get("at", ""))
     last: dict[str, int] = {}
     for i, p in enumerate(hist):
-        for k in (str(p.get("audio_id") or ""), _norm(p.get("music"))):
+        for k in (str(p.get("audio_id") or ""), str(p.get("song_gid") or ""), _norm(p.get("music"))):
             if k:
                 last[k] = i
     def used(a: dict) -> int:
-        return max(last.get(a["audio_id"], -1), last.get(_norm(a["title"]), -1))
+        return max(last.get(a["audio_id"], -1), last.get(a.get("gid", ""), -1), last.get(_norm(a["title"]), -1),
+                   last.get(_norm(a.get("orig_title")), -1) if a.get("orig_title") else -1)
     prev = song_key(next((p.get("music", "") for p in reversed(hist) if p.get("music")), ""), rules)
     cut = len(hist) - int(rules.music.get("avoid_last", 1))
 
     def ordered(cands: list[dict]) -> list[dict]:
         fresh = [a for a in cands if used(a) < 0]
-        order = sorted(fresh, key=lambda a: song_key(a["title"], rules) == prev)   # stejná jako minule až nakonec
+        # stejná jako minule až nakonec; mezi nehranými má přednost ta se jménem
+        order = sorted(fresh, key=lambda a: (song_key(a["title"], rules) == prev, not a.get("linked")))
         if rules.music.get("repeat", True):
             order += sorted((a for a in cands if 0 <= used(a) < cut), key=used)
         return order
 
     def chain(cands: list[dict]) -> list[dict]:
-        return ordered([a for a in cands if a.get("linked")]) + (
-            ordered([a for a in cands if not a.get("linked")]) if rules.music.get("original_fallback", True) else [])
+        # Dřív napřed všechny se jménem — s Chopinem se jménem by pak hrál u každého videa dokola.
+        if not rules.music.get("original_fallback", True):
+            cands = [a for a in cands if a.get("linked")]
+        return ordered(cands)
 
     want = set(clip_cats(clip, rules)) if clip else set()
     fit = [a for a in pool if want & set(a["cats"])]
@@ -546,8 +582,9 @@ def plan(rules: Rules, queue: list[dict], posted: list[dict], now: dt.datetime, 
                 nxt = pick_song(ig, rules, sim, min_s=float(c.get("duration_s") or 0), clip=c)
                 song = f"{nxt['title']} – {nxt['artist']}" if nxt else "čeká na písničku z galerie"
                 if nxt:
-                    sim.append({"at": iso(at), "music": nxt["title"], "audio_id": nxt["audio_id"]})
-                    song_id = nxt["audio_id"]
+                    sim.append({"at": iso(at), "music": nxt["title"], "audio_id": nxt["audio_id"],
+                                "song_gid": nxt.get("gid", "")})
+                    song_id = nxt.get("gid") or nxt["audio_id"]
             rows.append({"at": iso(at), "status": "planned" if c else "empty", "clipId": c["id"] if c else "",
                          "kategorie": (c or {}).get("kategorie", "momentka") if c else "",
                          "title": c.get("header", "") if c else "", "score": int(c.get("score") or 0) if c else 0,
@@ -564,10 +601,11 @@ def songs_summary(rules: Rules, ig: "IG | None") -> dict:
     if ig is None:
         return {}
     off = set(SONG_OVR.get("off") or [])
-    songs = [{"audioId": a["audio_id"], "title": a["title"], "artist": a["artist"], "ms": a.get("ms", 0),
-              "linked": bool(a.get("linked")), "cats": song_cats(a, rules),
-              "defCats": list((rules.music.get("song_cats") or {}).get(a["audio_id"]) or []),
-              "off": a["audio_id"] in off}
+    songs = [{"audioId": a.get("gid") or a["audio_id"], "attachId": a["audio_id"], "title": a["title"],
+              "artist": a["artist"], "ms": a.get("ms", 0), "named": bool(a.get("linked")),
+              "origTitle": a.get("orig_title", ""), "cats": song_cats(a, rules),
+              "defCats": list((rules.music.get("song_cats") or {}).get(a.get("gid") or a["audio_id"]) or []),
+              "off": (a.get("gid") or a["audio_id"]) in off}
              for a in song_pool(ig, rules)]
     cats = [{"id": c["id"], "label": c.get("label", c["id"]), "emoji": c.get("emoji", "")}
             for c in rules.music.get("categories") or []]
@@ -589,7 +627,7 @@ def reels_summary(posted: list[dict], limit: int = 60) -> list[dict]:
                     "music": p.get("music", ""), "artist": p.get("artist", ""),
                     "baked": bool(p.get("baked_audio")), "caption": (p.get("caption") or "")[:600],
                     "m": {k: int(m.get(k) or 0) for k in REEL_METRICS}, "mAt": m.get("at", ""),
-                    "audioId": p.get("audio_id", ""), "cats": p.get("cats") or [],
+                    "audioId": p.get("song_gid") or p.get("audio_id", ""), "cats": p.get("cats") or [],
                     "h": [[round((parse(t) - parse(p["at"])).total_seconds() / 3600, 1), v]
                           for t, v in (p.get("mh") or [])]})
     return out
@@ -770,7 +808,8 @@ def post_one(ig: IG, rules: Rules, queue: list[dict], posted: list[dict], dry: b
              "media_id": res["media_id"], "title": clip.get("header", ""), "score": clip.get("score"),
              "music": (clip.get("hudba", "") if baked else (song["title"] if audio else "")),
              "artist": song.get("artist", "") if audio else "", "baked_audio": baked,
-             "audio_id": song["audio_id"] if audio else "", "caption": cap, "note": note,
+             "audio_id": song["audio_id"] if audio else "", "song_gid": song.get("gid", "") if audio else "",
+             "named": bool(song.get("linked")) if audio else False, "caption": cap, "note": note,
              "klipy_rec": clip.get("klipy_rec", ""), "kategorie": clip.get("kategorie", "momentka"),
              "cats": clip_cats(clip, rules)}
     log(f"✅ venku: {res['url']}")
