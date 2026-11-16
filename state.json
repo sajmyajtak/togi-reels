@@ -1,11 +1,11 @@
 {
- "plan_fp": "57b9673ee525ad9ab30a2770f48e41bd0074309e",
+ "plan_fp": "25f962bde5a0a984619c3226a508316758dc7f78",
  "plan_rec": "recdXIAwyYFkBpfNV",
  "followers": 7,
- "metrics_at": "2026-11-16T20:56:50+00:00",
+ "metrics_at": "2026-11-16T21:02:51+00:00",
  "held": {
   "at": "2026-11-13T22:53:17+00:00",
   "why": "momentka by byla bez hudby"
  },
- "songs_fetched": "2026-11-16T21:00:21+00:00"
+ "songs_fetched": "2026-11-16T14:00:23+00:00"
 }
