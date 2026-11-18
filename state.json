@@ -1,5 +1,5 @@
 {
- "plan_fp": "a98e6ded91187d44365c9ec4c0bb62e5cb552a83",
+ "plan_fp": "a6b1c616deb587b0dd945972627e65db64155bfe",
  "plan_rec": "recdXIAwyYFkBpfNV",
  "followers": 9,
  "metrics_at": "2026-11-18T13:34:43+00:00",
@@ -7,5 +7,30 @@
   "at": "2026-11-13T22:53:17+00:00",
   "why": "momentka by byla bez hudby"
  },
- "songs_fetched": "2026-11-17T17:30:22+00:00"
+ "songs_fetched": "2026-11-18T14:00:30+00:00",
+ "songs_rec": "recdhdPlmFSxv0PkY",
+ "songs_ovr": {
+  "v": 1,
+  "cats": {
+   "29185282764392025": [
+    "gym",
+    "chaos",
+    "penize"
+   ],
+   "1301995714370720": [
+    "drama",
+    "trapas"
+   ],
+   "26362560926774085": [
+    "gym",
+    "chaos",
+    "penize"
+   ],
+   "29105845065673792": [
+    "trapas"
+   ]
+  },
+  "off": [],
+  "at": "2026-11-18T01:09:54.908Z"
+ }
 }
